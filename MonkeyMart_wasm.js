@@ -804,15 +804,8 @@ function _PokiSdkJs_CaptureError(error) {}
 
 function _PokiSdkJs_CommercialBreak(callback) {
     PokiSdk._callback = callback;
-    JumpGame.showInterstitial({
-        beforeShowAd: () => {
-
-        },
-        afterShowAd: () => {
-
-        }
-    })
-    PokiSdk._commercialBreakCallback()
+    PokiSDK.commercialBreak().then(PokiSdk._commercialBreakCallback);
+    // PokiSdk._commercialBreakCallback()
 }
 
 function _PokiSdkJs_GameplayStart() {
@@ -835,14 +828,10 @@ function _PokiSdkJs_IsAdBlocked() {
 
 function _PokiSdkJs_RewardedBreak(callback) {
     PokiSdk._callback = callback;
-    JumpGame.showReward({
-        beforeShowAd: () => {
-
-        },
-        afterShowAd: (flag) => {
-            PokiSdk._rewardedBreakCallback(flag);
-        }
+    PokiSDK.rewardedBreak((flag)=>{
+        PokiSdk._rewardedBreakCallback(flag);
     })
+
 }
 
 function _PokiSdkJs_SetDebug(value) {
