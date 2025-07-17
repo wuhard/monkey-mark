@@ -858,29 +858,6 @@ function _PokiSdkJs_RewardedBreak(callback) {
         };
     }))
 
-    new Promise((function (n) {
-         window.parent.postMessage("next", "*");
-                    // 定义iframe通信对象MIAD_NEXT
-                    window.parent.MIAD_NEXT = {};
-                    // 插屏广告播放成功
-                    window.parent.MIAD_NEXT._callback = function () {
-            PokiSdk._rewardedBreakCallback(true);
-                        console.log('插屏广告观看完成')
-                    };
-                    // 插屏广告播放失败（注意原因可能是频次太快，建议在failback也能继续游戏流程）
-                    window.parent.MIAD_NEXT._failback = function () {
-            PokiSdk._rewardedBreakCallback(false);
-                    };
-        // if (i.ignoreEvents()) return O.debug && console.error("commercialBreak ignored because of too many events"), void n();
-        // var o = i.gameStarted ? e.ads.position.midroll : e.ads.position.preroll;
-        // i.runVideoAd({
-        //     amount: 1,
-        //     position: o,
-        //     onStart: t
-        // }).then((function () {
-        //     n()
-        // }))
-    }))
 
 
     // JumpGame.showReward({
