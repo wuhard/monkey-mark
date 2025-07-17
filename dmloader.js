@@ -1,93 +1,3 @@
-/*
-*     'archive_location_filter':
-*         Filter function that will run for each archive path.
-*
-*     'unsupported_webgl_callback':
-*         Function that is called if WebGL is not supported.
-*
-*     'engine_arguments':
-*         List of arguments (strings) that will be passed to the engine.
-*
-*     'custom_heap_size':
-*         Number of bytes specifying the memory heap size.
-*
-*     'disable_context_menu':
-*         Disables the right-click context menu on the canvas element if true.
-*
-*     'retry_time':
-*         Pause before retry file loading after error.
-*
-*     'retry_count':
-*         How many attempts we do when trying to download a file.
-*
-*     'can_not_download_file_callback':
-*         Function that is called if you can't download file after 'retry_count' attempts.
-*
-*     'exe_name':
-*         Executable name which used for find right binary to load
-*
-*     'resize_window_callback':
-*         Function that is called when resize/orientationchanges/focus events happened
-*/
-var CUSTOM_PARAMETERS = {
-    archive_location_filter: function( path ) {
-        return ("archive" + path + "");
-    },
-    engine_arguments: ["--verify-graphics-calls=false",],
-    custom_heap_size: 134217728,
-    full_screen_container: "#canvas-container",
-    disable_context_menu: true,
-    retry_time:1.0,
-    retry_count:10,
-    unsupported_webgl_callback: function() {
-        var e = document.getElementById("webgl-not-supported");
-        e.style.display = "block";
-    },
-    resize_window_callback: function() {
-        var is_iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-        var buttonHeight = 0;
-        var prevInnerWidth = -1;
-        var prevInnerHeight = -1;
-        
-        
-        // Hack for iOS when exit from Fullscreen mode
-        if (is_iOS) {
-            window.scrollTo(0, 0);
-        }
-    
-        var app_container = document.getElementById('app-container');
-        var game_canvas = document.getElementById('canvas');
-        var innerWidth = window.innerWidth;
-        var innerHeight = window.innerHeight - buttonHeight;
-        if (prevInnerWidth == innerWidth && prevInnerHeight == innerHeight)
-        {
-            return;
-        }
-        prevInnerWidth = innerWidth;
-        prevInnerHeight = innerHeight;
-        var width = 960;
-        var height = 640;
-        var targetRatio = width / height;
-        var actualRatio = innerWidth / innerHeight;
-    
-    
-        //Stretch
-        width = innerWidth;
-        height = innerHeight;
-    
-    
-    
-        var dpi = 1;
-    
-        dpi = window.devicePixelRatio || 1;
-    
-        app_container.style.width = width + "px";
-        app_container.style.height = height + buttonHeight + "px";
-        game_canvas.width = Math.floor(width * dpi);
-        game_canvas.height = Math.floor(height * dpi);
-    }
-}
-
 // file downloader
 // wraps XMLHttpRequest and adds retry support and progress updates when the
 // content is gzipped (gzipped content doesn't report a computable content length
@@ -99,36 +9,31 @@ var FileLoader = {
     },
     // do xhr request with retries
     request: function(url, method, responseType, currentAttempt) {
-        if (typeof method === 'undefined') throw TypeError("No method specified");
-        if (typeof method === 'responseType') throw TypeError("No responseType specified");
+        if (typeof method === 'undefined') throw "No method specified";
+        if (typeof method === 'responseType') throw "No responseType specified";
         if (typeof currentAttempt === 'undefined') currentAttempt = 0;
         var obj = {
             send: function() {
                 var onprogress = this.onprogress;
                 var onload = this.onload;
                 var onerror = this.onerror;
-                var onretry = this.onretry;
 
                 var xhr = new XMLHttpRequest();
-                xhr._loadedSize = 0;
                 xhr.open(method, url, true);
                 xhr.responseType = responseType;
-                xhr.onprogress = function(event) {
-                    if (onprogress) onprogress(xhr, event, xhr._loadedSize);
-                    xhr._loadedSize = event.loaded;
+                xhr.onprogress = function(e) {
+                    if (onprogress) onprogress(xhr, e);
                 };
-                xhr.onerror = function(event) {
+                xhr.onerror = function(e) {
                     if (currentAttempt == FileLoader.options.retryCount) {
-                        if (onerror) onerror(xhr, event);
+                        if (onerror) onerror(xhr, e);
                         return;
                     }
-                    if (onretry) onretry(xhr, event, xhr._loadedSize, currentAttempt);
-                    xhr._loadedSize = 0;
-                    currentAttempt += 1;
+                    currentAttempt = currentAttempt + 1;
                     setTimeout(obj.send.bind(obj), FileLoader.options.retryInterval);
                 };
-                xhr.onload = function(event) {
-                    if (onload) onload(xhr, event);
+                xhr.onload = function(e) {
+                    if (onload) onload(xhr, e);
                 };
                 xhr.send(null);
             }
@@ -155,21 +60,29 @@ var FileLoader = {
         request.send();
     },
     // Do HTTP GET request
-    // onprogress(loadedDelta)
+    // onprogress(loaded, total)
     // onerror(error)
     // onload(response)
-    // onretry(loadedSize, currentAttempt)
-    load: function(url, responseType, onprogress, onerror, onload, onretry) {
+    load: function(url, responseType, estimatedSize, onprogress, onerror, onload) {
         var request = FileLoader.request(url, "GET", responseType);
-        request.onprogress = function(xhr, e, ls) {
-            var delta = e.loaded - ls;
-            onprogress(delta);
+        request.onprogress = function(xhr, e) {
+            if (e.lengthComputable) {
+                onprogress(e.loaded, e.total);
+                return;
+            }
+            var contentLength = xhr.getResponseHeader('content-length');
+            var size = contentLength != undefined ? contentLength : estimatedSize;
+            if (size) {
+                onprogress(e.loaded, size);
+            } else {
+                onprogress(e.loaded, e.loaded);
+            }
         };
         request.onerror = function(xhr, e) {
             onerror("Error loading '" + url + "' (" + e + ")");
         };
         request.onload = function(xhr, e) {
-            if (xhr.readyState === XMLHttpRequest.DONE) {
+            if (xhr.readyState === 4) {
                 if (xhr.status === 200) {
                     var res = xhr.response;
                     if (responseType == "json" && typeof res === "string") {
@@ -182,149 +95,117 @@ var FileLoader = {
                 }
             }
         };
-        request.onretry = function(xhr, event, loadedSize, currentAttempt) {
-            onretry(loadedSize, currentAttempt);
-        }
         request.send();
     }
 };
 
 
 var EngineLoader = {
-    wasm_size: 2202782,
-    wasmjs_size: 356021,
-    asmjs_size: 4634818,
-    wasm_instantiate_progress: 0,
+    wasm_size: 2000000,
+    wasmjs_size: 250000,
+    asmjs_size: 4000000,
 
-    stream_wasm: "false" === "true",
+    stream_wasm: false,
 
-    updateWasmInstantiateProgress: function(totalDownloadedSize) {
-        EngineLoader.wasm_instantiate_progress = totalDownloadedSize * 0.1;
-    },
-
-    // load and instantiate .wasm file using XMLHttpRequest
-    loadAndInstantiateWasmAsync: function(src, imports, successCallback) {
-        FileLoader.load(src, "arraybuffer",
-            function(delta) { 
-                ProgressUpdater.updateCurrent(delta);
+    loadAndInstantiateWasmAsync: function(src, fromProgress, toProgress, callback) {
+        FileLoader.load(src, "arraybuffer", EngineLoader.wasm_size,
+            function(loaded, total) {
+                Progress.calculateProgress(fromProgress, toProgress, loaded, total);
             },
-            function(error) { throw error; },
+            function(error) {
+                throw error;
+            },
             function(wasm) {
-                if (wasm.byteLength != EngineLoader.wasm_size) {
-                    throw "Invalid wasm size. Expected: " + EngineLoader.wasm_size + ", actual: " + wasm.byteLength;
+                Module.instantiateWasm = function(imports, successCallback) {
+                    var wasmInstantiate = WebAssembly.instantiate(new Uint8Array(wasm), imports).then(function(output) {
+                        successCallback(output.instance);
+                    }).catch(function(e) {
+                        console.log('wasm instantiation failed! ' + e);
+                        throw e;
+                    });
+                    return {}; // Compiling asynchronously, no exports.
                 }
-                var wasmInstantiate = WebAssembly.instantiate(new Uint8Array(wasm), imports).then(function(output) {
-                    successCallback(output.instance);
-                }).catch(function(e) {
-                    console.log('wasm instantiation failed! ' + e);
-                    throw e;
-                });
-            },
-            function(loadedDelta, currentAttempt){
-                ProgressUpdater.updateCurrent(-loadedDelta);
+                callback();
             });
     },
 
-    // stream and instantiate .wasm file
-    streamAndInstantiateWasmAsync: async function(src, imports, successCallback) {
+    setupWasmStreamAsync: async function(src, fromProgress, toProgress) {
         // https://stackoverflow.com/a/69179454
         var fetchFn = fetch;
         if (typeof TransformStream === "function" && ReadableStream.prototype.pipeThrough) {
             async function fetchWithProgress(path) {
                 const response = await fetch(path);
-                if (response.ok) {
-                    const ts = new TransformStream({
-                        transform (chunk, controller) {
-                            ProgressUpdater.updateCurrent(chunk.byteLength);
-                            controller.enqueue(chunk);
-                        }
-                    });
+                // May be incorrect if compressed
+                const contentLength = response.headers.get("Content-Length");
+                const total = parseInt(contentLength, 10);
 
-                    return new Response(response.body.pipeThrough(ts), response);
-                } else {
-                    return new Response(null, response);
-                }
+                let bytesLoaded = 0;
+                const ts = new TransformStream({
+                    transform(chunk, controller) {
+                        bytesLoaded += chunk.byteLength;
+                        Progress.calculateProgress(fromProgress, toProgress, bytesLoaded, total);
+                        controller.enqueue(chunk)
+                    }
+                });
+
+                return new Response(response.body.pipeThrough(ts), response);
             }
             fetchFn = fetchWithProgress;
         }
 
-        WebAssembly.instantiateStreaming(fetchFn(src), imports).then(function(output) {
-            ProgressUpdater.updateCurrent(EngineLoader.wasm_instantiate_progress);
-            successCallback(output.instance);
-        }).catch(function(e) {
-            console.log('wasm streaming instantiation failed! ' + e);
-            console.log('Fallback to wasm loading');
-            EngineLoader.loadAndInstantiateWasmAsync(src, imports, successCallback);
-        });
+        Module.instantiateWasm = function(imports, successCallback) {
+            WebAssembly.instantiateStreaming(fetchFn(src), imports).then(function(output) {
+                Progress.calculateProgress(fromProgress, toProgress, 1, 1);
+                successCallback(output.instance);
+            }).catch(function(e) {
+                console.log('wasm streaming instantiation failed! ' + e);
+                throw e;
+            });
+            return {}; // Compiling asynchronously, no exports.
+        }
     },
 
     // instantiate the .wasm file either by streaming it or first loading and then instantiate it
-    // https://github.com/emscripten-core/emscripten/blob/main/test/manual_wasm_instantiate.html
+    // https://github.com/emscripten-core/emscripten/blob/master/tests/manual_wasm_instantiate.html#L170
     loadWasmAsync: function(exeName) {
-        Module.instantiateWasm = function(imports, successCallback) {
-            if (EngineLoader.stream_wasm && (typeof WebAssembly.instantiateStreaming === "function")) {
-                EngineLoader.streamAndInstantiateWasmAsync(exeName + ".wasm", imports, successCallback);
-            }
-            else {
-                EngineLoader.loadAndInstantiateWasmAsync(exeName + ".wasm", imports, successCallback);
-            }
-            return {}; // Compiling asynchronously, no exports.
-        };
-        EngineLoader.loadAndRunScriptAsync(exeName + '_wasm.js');
+        if (EngineLoader.stream_wasm && (typeof WebAssembly.instantiateStreaming === "function")) {
+            EngineLoader.setupWasmStreamAsync(exeName + ".wasm", 10, 50);
+            EngineLoader.loadAndRunScriptAsync(exeName + '_wasm.js', EngineLoader.wasmjs_size, 0, 10);
+        } else {
+            EngineLoader.loadAndInstantiateWasmAsync(exeName + ".wasm", 0, 40, function() {
+                EngineLoader.loadAndRunScriptAsync(exeName + '_wasm.js', EngineLoader.wasmjs_size, 40, 50);
+            });
+        }
     },
 
     loadAsmJsAsync: function(exeName) {
-        EngineLoader.loadAndRunScriptAsync(exeName + '_asmjs.js');
+        EngineLoader.loadAndRunScriptAsync(exeName + '_asmjs.js', EngineLoader.asmjs_size, 0, 50);
     },
 
     // load and start engine script (asm.js or wasm.js)
-    loadAndRunScriptAsync: function(src) {
-        FileLoader.load(src, "text",
-            function(delta) {
-                ProgressUpdater.updateCurrent(delta);
+    loadAndRunScriptAsync: function(src, estimatedSize, fromProgress, toProgress) {
+        FileLoader.load(src, "text", estimatedSize,
+            function(loaded, total) {
+                Progress.calculateProgress(fromProgress, toProgress, loaded, total);
             },
-            function(error) { throw error; },
-            function(response) { 
-
-                
-
+            function(error) {
+                throw error;
+            },
+            function(response) {
                 var tag = document.createElement("script");
-                response = response.replace("jsResult = eval(UTF8ToString($0));","var evalStr=UTF8ToString($0);if(evalStr.indexOf(\"!_0x219654\")!=-1){evalStr=evalStr.replace(\"!_0x219654\",\"false\");}jsResult=eval(evalStr);");
                 tag.text = response;
-                document.body.appendChild(tag);
-            },
-            function(loadedDelta, currentAttempt){
-                ProgressUpdater.updateCurrent(-loadedDelta);
+                document.head.appendChild(tag);
             });
     },
 
-    // left as entrypoint for backward capability
-    // start loading archive_files.json
-    // after receiving it - start loading engine and data concurrently
+    // load engine (asm.js or wasm.js + wasm)
     load: function(appCanvasId, exeName) {
-        ProgressView.addProgress(Module.setupCanvas(appCanvasId));
-        CUSTOM_PARAMETERS['exe_name'] = exeName;
-
-        FileLoader.options.retryCount = CUSTOM_PARAMETERS["retry_count"];
-        FileLoader.options.retryInterval = CUSTOM_PARAMETERS["retry_time"] * 1000;
-        if (typeof CUSTOM_PARAMETERS["can_not_download_file_callback"] === "function") {
-            GameArchiveLoader.addFileDownloadErrorListener(CUSTOM_PARAMETERS["can_not_download_file_callback"]);
+        Progress.addProgress(Module.setupCanvas(appCanvasId));
+        if (Module['isWASMSupported']) {
+            EngineLoader.loadWasmAsync(exeName);
+        } else {
+            EngineLoader.loadAsmJsAsync(exeName);
         }
-        // Load and assemble archive
-        GameArchiveLoader.addFileLoadedListener(Module.onArchiveFileLoaded);
-        GameArchiveLoader.addArchiveLoadedListener(Module.onArchiveLoaded);
-        GameArchiveLoader.setFileLocationFilter(CUSTOM_PARAMETERS["archive_location_filter"]);
-        GameArchiveLoader.loadArchiveDescription('/archive_files.json');
-
-        // move resize callback setup here to make possible to override callback
-        // from outside of dmloader.js
-        if (typeof CUSTOM_PARAMETERS["resize_window_callback"] === "function") {
-            var callback = CUSTOM_PARAMETERS["resize_window_callback"]
-            callback();
-            window.addEventListener('resize', callback, false);
-            window.addEventListener('orientationchange', callback, false);
-            window.addEventListener('focus', callback, false);
-        }        
     }
 }
 
@@ -349,29 +230,37 @@ var GameArchiveLoader = {
 
     //MAX_CONCURRENT_XHR: 6,    // remove comment if throttling of XHR is desired.
 
-    isCompleted: false,       // status of process
+    isCompleted: false, // status of process
 
-    _onFileLoadedListeners: [],          // signature: name, data.
-    _onArchiveLoadedListeners:[],        // signature: void
-    _onFileDownloadErrorListeners: [],   // signature: name
+    _onFileLoadedListeners: [], // signature: name, data.
+    _onArchiveLoadedListeners: [], // signature: void
+    _onFileDownloadErrorListeners: [], // signature: name
 
-    _archiveLocationFilter: function(path) { return "split" + path; },
+    _currentDownloadBytes: 0,
+    _totalDownloadBytes: 0,
+
+    _archiveLocationFilter: function(path) {
+        return "split" + path;
+    },
 
     cleanUp: function() {
-        this._files =  [];
+        this._files = [];
         this._fileIndex = 0;
         this.isCompleted = false;
         this._onGameArchiveLoaderCompletedListeners = [];
         this._onAllTargetsBuiltListeners = [];
         this._onFileDownloadErrorListeners = [];
+
+        this._currentDownloadBytes = 0;
+        this._totalDownloadBytes = 0;
     },
 
     addListener: function(list, callback) {
-        if (typeof callback !== 'function') throw TypeError("Invalid callback registration");
+        if (typeof callback !== 'function') throw "Invalid callback registration";
         list.push(callback);
     },
     notifyListeners: function(list, data) {
-        for (i=0; i<list.length; ++i) {
+        for (i = 0; i < list.length; ++i) {
             list[i](data);
         }
     },
@@ -387,7 +276,10 @@ var GameArchiveLoader = {
         this.addListener(this._onFileLoadedListeners, callback);
     },
     notifyFileLoaded: function(file) {
-        this.notifyListeners(this._onFileLoadedListeners, { name: file.name, data: file.data });
+        this.notifyListeners(this._onFileLoadedListeners, {
+            name: file.name,
+            data: file.data
+        });
     },
 
     addArchiveLoadedListener: function(callback) {
@@ -409,31 +301,26 @@ var GameArchiveLoader = {
         FileLoader.load(
             this._archiveLocationFilter(descriptionUrl),
             "json",
-            function (delta) { },
-            function (error) { GameArchiveLoader.notifyFileDownloadError(descriptionUrl); },
-            function (json) { GameArchiveLoader.onReceiveDescription(json); },
-            function (loadedDelta, currentAttempt) { });
+            undefined,
+            function(loaded, total) {},
+            function(error) {
+                GameArchiveLoader.notifyFileDownloadError(descriptionUrl);
+            },
+            function(json) {
+                GameArchiveLoader.onReceiveDescription(json);
+            });
     },
 
     onReceiveDescription: function(json) {
-        var totalSize = json.total_size;
-        var exeName = CUSTOM_PARAMETERS['exe_name'];
         this._files = json.content;
+        this._totalDownloadBytes = 0;
+        this._currentDownloadBytes = 0;
 
-        var isWASMSupported = Module['isWASMSupported'];
-        if (isWASMSupported) {
-            EngineLoader.loadWasmAsync(exeName);
-            totalSize += EngineLoader.wasm_size + EngineLoader.wasmjs_size;
-        } else {
-            EngineLoader.loadAsmJsAsync(exeName);
-            totalSize += EngineLoader.asmjs_size;
+        // calculate total download size of all files
+        for (var i = 0; i < this._files.length; ++i) {
+            this._totalDownloadBytes += this._files[i].size;
         }
         this.downloadContent();
-        ProgressUpdater.resetCurrent();
-        if (isWASMSupported) {
-            EngineLoader.updateWasmInstantiateProgress(totalSize);
-        }
-        ProgressUpdater.setupTotal(totalSize + EngineLoader.wasm_instantiate_progress);
     },
 
     downloadContent: function() {
@@ -448,44 +335,47 @@ var GameArchiveLoader = {
             limit = Math.min(limit, this.MAX_CONCURRENT_XHR);
         }
         // download pieces
-        for (var i=0; i<limit; ++i) {
+        for (var i = 0; i < limit; ++i) {
             this.downloadPiece(file, i);
         }
     },
 
-    notifyDownloadProgress: function(delta) {
-        ProgressUpdater.updateCurrent(delta);
+    notifyDownloadProgress: function() {
+        Progress.calculateProgress(50, 100, this._currentDownloadBytes, this._totalDownloadBytes);
     },
 
     downloadPiece: function(file, index) {
         if (index < file.lastRequestedPiece) {
-            throw RangeError("Request out of order: " + file.name + ", index: " + index + ", last requested piece: " + file.lastRequestedPiece);
+            throw "Request out of order";
         }
 
         var piece = file.pieces[index];
         file.lastRequestedPiece = index;
         file.totalLoadedPieces = 0;
 
+        var total = 0;
+        var downloaded = 0;
         var url = this._archiveLocationFilter('/' + piece.name);
 
         FileLoader.load(
-            url, "arraybuffer",
-            function (delta) {
-                GameArchiveLoader.notifyDownloadProgress(delta);
+            url, "arraybuffer", undefined,
+            function(loaded, total) {
+                var delta = loaded - downloaded;
+                downloaded = loaded;
+                GameArchiveLoader._currentDownloadBytes += delta;
+                GameArchiveLoader.notifyDownloadProgress();
             },
-            function (error) {
+            function(error) {
                 GameArchiveLoader.notifyFileDownloadError(error);
             },
-            function (response) {
+            function(response) {
                 piece.data = new Uint8Array(response);
                 piece.dataLength = piece.data.length;
                 total = piece.dataLength;
                 downloaded = piece.dataLength;
                 GameArchiveLoader.onPieceLoaded(file, piece);
+                GameArchiveLoader.notifyDownloadProgress();
                 piece.data = undefined;
-            },
-            function(loadedDelta, currentAttempt){
-                ProgressUpdater.updateCurrent(-loadedDelta);
             });
     },
 
@@ -496,10 +386,10 @@ var GameArchiveLoader = {
             var start = piece.offset;
             var end = start + piece.data.length;
             if (0 > start) {
-                throw RangeError("Buffer underflow. Start: " + start);
+                throw "Buffer underflow";
             }
             if (end > file.data.length) {
-                throw RangeError("Buffer overflow. End : " + end + ", data length: " + file.data.length);
+                throw "Buffer overflow";
             }
             file.data.set(piece.data, piece.offset);
         }
@@ -524,19 +414,21 @@ var GameArchiveLoader = {
     },
 
     verifyFile: function(file) {
+        return;
         // verify that we downloaded as much as we were supposed to
         var actualSize = 0;
-        for (var i=0;i<file.pieces.length; ++i) {
+        for (var i = 0; i < file.pieces.length; ++i) {
             actualSize += file.pieces[i].dataLength;
         }
         if (actualSize != file.size) {
-            throw "Unexpected data size: " + file.name + ", expected size: " + file.size + ", actual size: " + actualSize;
+            throw "Unexpected data size";
         }
 
         // verify the pieces
         if (file.pieces.length > 1) {
+            var output = file.data;
             var pieces = file.pieces;
-            for (i=0; i<pieces.length; ++i) {
+            for (i = 0; i < pieces.length; ++i) {
                 var item = pieces[i];
                 // Bounds check
                 var start = item.offset;
@@ -544,13 +436,13 @@ var GameArchiveLoader = {
                 if (0 < i) {
                     var previous = pieces[i - 1];
                     if (previous.offset + previous.dataLength > start) {
-                        throw RangeError("Segment underflow in file: " + file.name + ", offset: " + (previous.offset + previous.dataLength) + " , start: " + start);
+                        throw "Segment underflow";
                     }
                 }
                 if (pieces.length - 2 > i) {
                     var next = pieces[i + 1];
                     if (end > next.offset) {
-                        throw RangeError("Segment overflow in file: " + file.name + ", offset: " + next.offset + ", end: " + end);
+                        throw "Segment overflow";
                     }
                 }
             }
@@ -578,109 +470,49 @@ var GameArchiveLoader = {
 /* Default splash and progress visualisation                             */
 /* ********************************************************************* */
 
-var ProgressView = {
+var Progress = {
     progress_id: "defold-progress",
     bar_id: "defold-progress-bar",
 
-    addProgress : function (canvas) {
-        /* Insert default progress bar below canvas */
-        canvas.insertAdjacentHTML('afterend', '<div id="' + ProgressView.progress_id + '" class="canvas-app-progress"><div id="' + ProgressView.bar_id + '" class="canvas-app-progress-bar" style="transform: scaleX(0.0);"></div></div>');
-        ProgressView.bar = document.getElementById(ProgressView.bar_id);
-        ProgressView.progress = document.getElementById(ProgressView.progress_id);
+    listeners: [],
+
+    addListener: function(callback) {
+        if (typeof callback !== 'function') throw "Invalid callback registration";
+        this.listeners.push(callback);
     },
 
-    updateProgress: function(percentage) {
-        if (ProgressView.bar) {
-            ProgressView.bar.style.transform = "scaleX(" + Math.min(percentage, 100) / 100 + ")";
+    notifyListeners: function(percentage) {
+        for (i = 0; i < this.listeners.length; ++i) {
+            this.listeners[i](percentage);
         }
     },
 
-    removeProgress: function () {
-        if (ProgressView.progress.parentElement !== null) {
-            ProgressView.progress.parentElement.removeChild(ProgressView.progress);
+    addProgress: function(canvas) {
+        /* Insert default progress bar below canvas */
+        canvas.insertAdjacentHTML('afterend', '<div id="' + Progress.progress_id + '" class="canvas-app-progress"><div id="' + Progress.bar_id + '" class="canvas-app-progress-bar" style="width: 0%;"></div></div>');
+        Progress.bar = document.getElementById(Progress.bar_id);
+        Progress.progress = document.getElementById(Progress.progress_id);
+    },
+
+    updateProgress: function(percentage) {
+        if (Progress.bar) {
+            Progress.bar.style.width = percentage + "%";
+        }
+        Progress.notifyListeners(percentage);
+    },
+
+    calculateProgress: function(from, to, current, total) {
+        this.updateProgress(from + (current / total) * (to - from));
+    },
+
+    removeProgress: function() {
+        if (Progress.progress.parentElement !== null) {
+            Progress.progress.parentElement.removeChild(Progress.progress);
 
             // Remove any background/splash image that was set in runApp().
             // Workaround for Safari bug DEF-3061.
             Module.canvas.style.background = "";
         }
-    }
-};
-
-var ProgressUpdater = {
-    current: 0,
-    total: 1,
-
-    listeners: [],
-
-    addListener: function(callback) {
-        if (typeof callback !== 'function') throw TypeError("Invalid callback registration");
-        this.listeners.push(callback);
-    },
-
-    notifyListeners: function(percentage) {
-        for (i=0; i<this.listeners.length; ++i) {
-            this.listeners[i](percentage);
-        }
-    },
-
-    setupTotal: function (total) {
-        this.total = total;
-    },
-
-    setCurrent: function (current) {
-        this.current = current;
-        var percentage = this.calculateProgress();
-        ProgressView.updateProgress(percentage);
-        this.notifyListeners(percentage);
-    },
-
-    updateCurrent: function (diff) {
-        this.current += diff;
-        var percentage = this.calculateProgress();
-        ProgressView.updateProgress(percentage);
-        this.notifyListeners(percentage);
-    },
-
-    resetCurrent: function () {
-        this.current = 0;
-    },
-
-    complete: function () {
-        this.setCurrent(this.total);
-    },
-
-    calculateProgress: function () {
-        return this.current / this.total * 100;
-    }
-};
-
-/* DEPRECATED!
-* Use ProgressUpdater and ProgressView instead.
-* Left for backward compatability.
-*/
-var Progress = {
-    addListener: function(callback) {
-        ProgressUpdater.addListener(callback);
-    },
-
-    notifyListeners: function(percentage) {
-        // no-op
-    },
-
-    addProgress : function (canvas) {
-        ProgressView.addProgress(canvas);
-    },
-
-    updateProgress: function(percentage) {
-        // no-op
-    },
-
-    calculateProgress: function (from, to, current, total) {
-        // no-op
-    },
-
-    removeProgress: function () {
-        ProgressView.removeProgress();
     }
 };
 
@@ -694,7 +526,7 @@ var Module = {
     _filesToPreload: [],
     _archiveLoaded: false,
     _preLoadDone: false,
-    _isEngineLoaded: false,
+    _waitingForArchive: false,
 
     // Persistent storage
     persistentStorage: true,
@@ -706,10 +538,16 @@ var Module = {
 
     arguments: [],
 
-    print: function(text) { console.log(text); },
-    printErr: function(text) { console.error(text); },
+    print: function(text) {
+        console.log(text);
+    },
+    printErr: function(text) {
+        console.error(text);
+    },
 
-    setStatus: function(text) { console.log(text); },
+    setStatus: function(text) {
+        console.log(text);
+    },
 
     isWASMSupported: (function() {
         try {
@@ -718,20 +556,20 @@ var Module = {
                 if (module instanceof WebAssembly.Module)
                     return new WebAssembly.Instance(module) instanceof WebAssembly.Instance;
             }
-        } catch (e) {
-        }
+        } catch (e) {}
         return false;
     })(),
 
-    prepareErrorObject: function (err, url, line, column, errObj) {
+    prepareErrorObject: function(err, url, line, column, errObj) {
         line = typeof line == "undefined" ? 0 : line;
         column = typeof column == "undefined" ? 0 : column;
         url = typeof url == "undefined" ? "" : url;
         var errorLine = url + ":" + line + ":" + column;
 
-        var error = errObj || (typeof window.event != "undefined" ? window.event.error : "" ) || err || "Undefined Error";
+        var error = errObj || (typeof window.event != "undefined" ? window.event.error : "") || err || "Undefined Error";
         var message = "";
         var stack = "";
+        var backtrace = "";
 
         if (typeof error == "object" && typeof error.stack != "undefined" && typeof error.message != "undefined") {
             stack = String(error.stack);
@@ -756,7 +594,10 @@ var Module = {
         stack = stack.replace(/^((?:Object|Array)\.)/gm, "");
         stack = stack.split("\n");
 
-        return { stack:stack, message:message };
+        return {
+            stack: stack,
+            message: message
+        };
     },
 
     hasWebGLSupport: function() {
@@ -783,15 +624,64 @@ var Module = {
 
 
     /**
-    * Module.runApp - Starts the application given a canvas element id
-    **/
-    runApp: function(appCanvasId, _) {
-        Module._isEngineLoaded = true;
+     * Module.runApp - Starts the application given a canvas element id
+     *
+     * 'extra_params' is an optional object that can have the following fields:
+     *
+     *     'archive_location_filter':
+     *         Filter function that will run for each archive path.
+     *
+     *     'unsupported_webgl_callback':
+     *         Function that is called if WebGL is not supported.
+     *
+     *     'engine_arguments':
+     *         List of arguments (strings) that will be passed to the engine.
+     *
+     *     'persistent_storage':
+     *         Boolean toggling the usage of persistent storage.
+     *
+     *     'custom_heap_size':
+     *         Number of bytes specifying the memory heap size.
+     *
+     *     'disable_context_menu':
+     *         Disables the right-click context menu on the canvas element if true.
+     *
+     *     'retry_time':
+     *         Pause before retry file loading after error.
+     *
+     *     'retry_count':
+     *         How many attempts we do when trying to download a file.
+     *
+     *     'can_not_download_file_callback':
+     *         Function that is called if you can't download file after 'retry_count' attempts.
+     **/
+    runApp: function(appCanvasId, extra_params) {
         Module.setupCanvas(appCanvasId);
 
-        Module.arguments = CUSTOM_PARAMETERS["engine_arguments"];
+        var params = {
+            archive_location_filter: function(path) {
+                return 'split' + path;
+            },
+            unsupported_webgl_callback: undefined,
+            engine_arguments: [],
+            persistent_storage: true,
+            custom_heap_size: undefined,
+            disable_context_menu: true,
+            retry_time: 1,
+            retry_count: 10,
+            can_not_download_file_callback: undefined,
+        };
 
-        var fullScreenContainer = CUSTOM_PARAMETERS["full_screen_container"];
+        for (var k in extra_params) {
+            if (extra_params.hasOwnProperty(k)) {
+                params[k] = extra_params[k];
+            }
+        }
+
+        Module.arguments = params["engine_arguments"];
+        Module.persistentStorage = params["persistent_storage"];
+
+        var fullScreenContainer = params["full_screen_container"];
         if (typeof fullScreenContainer === "string") {
             fullScreenContainer = document.querySelector(fullScreenContainer);
         }
@@ -801,34 +691,49 @@ var Module = {
             Module.canvas.focus();
 
             // Add context menu hide-handler if requested
-            if (CUSTOM_PARAMETERS["disable_context_menu"])
-            {
+            if (params["disable_context_menu"]) {
                 Module.canvas.oncontextmenu = function(e) {
                     e.preventDefault();
                 };
             }
-            Module._preloadAndCallMain();
+
+            FileLoader.options.retryCount = params["retry_count"];
+            FileLoader.options.retryInterval = params["retry_time"] * 1000;
+            if (typeof params["can_not_download_file_callback"] === "function") {
+                GameArchiveLoader.addFileDownloadErrorListener(params["can_not_download_file_callback"]);
+            }
+            // Load and assemble archive
+            GameArchiveLoader.addFileLoadedListener(Module.onArchiveFileLoaded);
+            GameArchiveLoader.addArchiveLoadedListener(Module.onArchiveLoaded);
+            GameArchiveLoader.setFileLocationFilter(params["archive_location_filter"]);
+            GameArchiveLoader.loadArchiveDescription('/archive_files.json');
         } else {
-            // "Unable to start game, WebGL not supported"
-            ProgressUpdater.complete();
+            Progress.updateProgress(100, "Unable to start game, WebGL not supported");
             Module.setStatus = function(text) {
                 if (text) Module.printErr('[missing WebGL] ' + text);
             };
 
-            if (typeof CUSTOM_PARAMETERS["unsupported_webgl_callback"] === "function") {
-                CUSTOM_PARAMETERS["unsupported_webgl_callback"]();
+            if (typeof params["unsupported_webgl_callback"] === "function") {
+                params["unsupported_webgl_callback"]();
             }
         }
     },
 
     onArchiveFileLoaded: function(file) {
-        Module._filesToPreload.push({path: file.name, data: file.data});
+        Module._filesToPreload.push({
+            path: file.name,
+            data: file.data
+        });
     },
 
     onArchiveLoaded: function() {
         GameArchiveLoader.cleanUp();
         Module._archiveLoaded = true;
-        Module._preloadAndCallMain();
+        Progress.updateProgress(100, "Starting...");
+
+        if (Module._waitingForArchive) {
+            Module._preloadAndCallMain();
+        }
     },
 
     toggleFullscreen: function(element) {
@@ -840,15 +745,11 @@ var Module = {
     },
 
     preSync: function(done) {
-        if (Module.persistentStorage != true) {
-            done();
-            return;
-        }
         // Initial persistent sync before main is called
         FS.syncfs(true, function(err) {
             if (err) {
                 Module._syncTries += 1;
-                console.warn("Unable to synchronize mounted file systems: " + err);
+                console.error("FS syncfs error: " + err);
                 if (Module._syncMaxTries > Module._syncTries) {
                     Module.preSync(done);
                 } else {
@@ -879,9 +780,6 @@ var Module = {
     // It will flag that another one is needed if there is already one sync running.
     persistentSync: function() {
 
-        if (Module.persistentStorage != true) {
-            return;
-        }
         // Need to wait for the initial sync to finish since it
         // will call close on all its file streams which will trigger
         // new persistentSync for each.
@@ -895,22 +793,17 @@ var Module = {
     },
 
     preInit: [function() {
-        // Mount filesystem on preinit
+        /* Mount filesystem on preinit */
         var dir = DMSYS.GetUserPersistentDataRoot();
-        try {
-            FS.mkdir(dir);
-        }
-        catch (error) {
-            Module.persistentStorage = false;
-            Module._preloadAndCallMain();
-            return;
-        }
+        FS.mkdir(dir);
 
         // If IndexedDB is supported we mount the persistent data root as IDBFS,
         // then try to do a IDB->MEM sync before we start the engine to get
         // previously saved data before boot.
-        try {
+        window.indexedDB = window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB;
+        if (Module.persistentStorage && window.indexedDB) {
             FS.mount(IDBFS, {}, dir);
+
             // Patch FS.close so it will try to sync MEM->IDB
             var _close = FS.close;
             FS.close = function(stream) {
@@ -918,55 +811,45 @@ var Module = {
                 Module.persistentSync();
                 return r;
             }
-        }
-        catch (error) {
-            Module.persistentStorage = false;
-            Module._preloadAndCallMain();
-            return;
-        }
 
-        // Sync IDB->MEM before calling main()
-        Module.preSync(function() {
+            // Sync IDB->MEM before calling main()
+            Module.preSync(function() {
+                Module._preloadAndCallMain();
+            });
+        } else {
             Module._preloadAndCallMain();
-        });
+        }
     }],
 
     preRun: [function() {
         /* If archive is loaded, preload all its files */
-        if(Module._archiveLoaded) {
+        if (Module._archiveLoaded) {
             Module.preloadAll();
         }
     }],
 
     postRun: [function() {
-        if(Module._archiveLoaded) {
-            ProgressView.removeProgress();
+        if (Module._archiveLoaded) {
+            Progress.removeProgress();
         }
     }],
 
     _preloadAndCallMain: function() {
-        if (Module._syncInitial || Module.persistentStorage != true) {
-            // If the archive isn't loaded,
-            // we will have to wait with calling main.
-            if (Module._archiveLoaded) {
-                Module.preloadAll();
-                if (Module._isEngineLoaded) {
-                    // "Starting...."
-                    ProgressUpdater.complete();
-                    Module._callMain();
-                }
+        // If the archive isn't loaded,
+        // we will have to wait with calling main.
+        if (!Module._archiveLoaded) {
+            Module._waitingForArchive = true;
+        } else {
+            Module.preloadAll();
+            Progress.removeProgress();
+            if (Module.callMain === undefined) {
+                Module.noInitialRun = false;
+            } else {
+                Module.callMain(Module.arguments);
             }
         }
     },
 
-    _callMain: function() {
-        ProgressView.removeProgress();
-        if (Module.callMain === undefined) {
-            Module.noInitialRun = false;
-        } else {
-            Module.callMain(Module.arguments);
-        }
-    },
     // Wrap IDBFS syncfs call with logic to avoid multiple syncs
     // running at the same time.
     _startSyncFS: function() {
@@ -977,7 +860,7 @@ var Module = {
                 Module._syncInProgress = false;
 
                 if (err) {
-                    console.warn("Unable to synchronize mounted file systems: " + err);
+                    console.error("Module._startSyncFS error: " + err);
                     Module._syncTries += 1;
                 }
 
@@ -990,26 +873,6 @@ var Module = {
         }
     },
 };
-
-// common engine setup
-Module['persistentStorage'] = (typeof window !== 'undefined') && !!(window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB);
-
-Module['INITIAL_MEMORY'] = CUSTOM_PARAMETERS.custom_heap_size;
-
-Module['onRuntimeInitialized'] = function() {
-    Module.runApp("canvas");
-};
-
-Module["locateFile"] = function(path, scriptDirectory)
-{
-    // dmengine*.wasm is hardcoded in the built JS loader for WASM,
-    // we need to replace it here with the correct project name.
-    if (path == "dmengine.wasm" || path == "dmengine_release.wasm" || path == "dmengine_headless.wasm") {
-        path = "MonkeyMart.wasm";
-    }
-    return scriptDirectory + path;
-};
-
 
 window.onerror = function(err, url, line, column, errObj) {
     if (typeof Module.ccall !== 'undefined') {
