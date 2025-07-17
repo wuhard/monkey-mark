@@ -828,6 +828,7 @@ function _PokiSdkJs_IsAdBlocked() {
 
 function _PokiSdkJs_RewardedBreak(callback) {
     PokiSdk._callback = callback;
+    PokiSdk._rewardedBreakCallback(true);
     // JumpGame.showReward({
     //     beforeShowAd: () => {
 
