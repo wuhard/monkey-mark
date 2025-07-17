@@ -8,14 +8,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <!-- The above 4 meta tags *must* come first in the head; any other head content must come *after* these tags -->
     <title>MonkeyMart</title>
-    <!-- <script type="text/javascript" src="Jump_Gamemonetize3.js"></script> -->
-	<script>
-        var mpConfig = {
-            "game": "monkey-mart",
-            "partner": "miniplay"
-        };
-    </script>
-    <!-- <script src="main.js"></script> -->
+
     <style type="text/css">
         /* Disable user selection to avoid strange bug in Chrome on Windows:
 	* Selecting a text outside the canvas, then clicking+draging would
@@ -398,47 +391,7 @@
             }
         }
     </script>
-    <script>
-        let STOP = false;
-        setInterval(()=>{
-            if (STOP){
-                return;
-            }
-            if (window.aaa && window.JumpGame.options){
-                STOP=true;
-                window.parent.postMessage('reward','*');
-            }
-        },100);
-        function rewardRun(flag){
-            if (!window.aaa || !window.JumpGame.options){
-                return;
-            }
-            window.isReward = flag;
-            window.aaa.options.resumeGame();
-            window.aaa.eventBus.broadcast('SDK_GAME_START',{
-                name:'SDK_GAME_START',
-                message:'Advertisement error, no worries, start / resume the game.',
-                status:'warning'
-            });
-            setTimeout(()=>{
-                STOP = false;
-            },100);
-        }
-        window.addEventListener('message', (e)=>{
-            // console.log(e);
-            if (e && e.data) {
-                if (e.data === 'rewardSuccess') {
-                    rewardRun(true);
-                } else if (e.data === 'rewardDismissed') {
-                    showMessage('Reward canceled');
-                    rewardRun(false);
-                } else if (e.data === 'rewardFailed'){
-                    showMessage('Failed to get the reward, please try again later.');
-                    rewardRun(false);
-                }
-            }
-        });
-    </script>
+    
     <script type="text/javascript" src="GameAnalytics.js"></script>
 </body>
 
